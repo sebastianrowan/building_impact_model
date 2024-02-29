@@ -1,0 +1,863 @@
+---
+title: Estimating the Greenhouse Gas Emissions from Flood Damages
+abstract-text: Activities to repair flood damages cause greenhouse gas (GHG) emissions that must be quantified to develop more sustainable approaches to flood risk management. In this study, we developed a fragility-based model to estimate the quantities of materials required to replace building components damaged in a flood of a given depth. We combined this model with life-cycle carbon footprint estimates for each component to develop probabilistic emissions-based damage curves for one- and two-story single family residential buildings. We then used these damage curves to estimate the GHG emissions associated with a 100-year flood in two regions in the Mississippi River Valley. Our results show that including the social costs of GHG emissions from flood damages can increase the valuation of total flood damages by over 8%. Our model can be used by planners in cost-benefit analyses of flood risk management projects to show that such projects are more economically efficient than current methods would report. (150 word limit).
+date: today
+date-format: long
+authors:
+    - name: Sebastian Rowan
+      roles: [conceptualization, data curation, formal analysis, investigation, methodology, project administration, software, visualization, writing, editing]
+      orcid: 0000-0002-0085-3906
+      email: Sebastian.Rowan@unh.edu
+      affiliations:
+        - ref: unh
+        - ref: erdc
+    - name: Weiwei Mo
+      roles: [conceptualization, methodology, project administration, supervision, editing]
+      orcid: 0000-0002-1893-0797
+      email: Weiwei.Mo@unh.edu
+      affiliations:
+        - ref: unh
+affiliations:
+  - id: unh
+    name: University of New Hampshire, Department of Civil and Environmental Engineering. Durham, NH, USA 03824
+  - id: erdc
+    name: U.S. Army Corps of Engineers, Engineer Research Development Center. Vicksburg, MS, USA, 39180 
+filters: 
+  - authors-block
+  - parse-latex
+  - docx-landscape.lua
+support: "This research was supported in part by an appointment to the Department of Defense (DOD) Research Participation Program administered by the Oak Ridge Institute for Science and Education (ORISE) through an interagency agreement between the U.S. Department of Energy (DOE) and the DOD. ORISE is managed by ORAU under DOE contract number DE-SC0014664. All opinions expressed in this paper are the author`s and do not necessarily reflect the policies and views of DOD, DOE, or ORAU/ORISE."
+keywords1: flood risk, resilience, life-cycle cost analysis, environmental impact analysis, cost-benefit analysis
+prefer-html: true
+execute:
+  echo: false
+  warning: false
+  cache: true
+bibliography: paper.bib
+csl: elsevier-harvard.csl
+link-citations: true
+format:
+  # elsevier-pdf:
+  #   include-in-header: 
+  #       text: |
+  #         \usepackage{lscape}
+  #         \newcommand{\blandscape}{\begin{landscape}}
+  #         \newcommand{\elandscape}{\end{landscape}}
+  #   keep-tex: true
+  #   fig-format: png
+  #   journal:
+  #     name: Science of The Total Environment
+  #     formatting: review
+  #     model: 1p
+  #     cite-style: authoryear
+  #     graphical-abstract: "![](graphical_abstract_example.png)"
+  #     highlights:
+  #       - Highlight 1
+  #       - Accounting for greenhouse gas emissions in flood risk assessments could result in a 5.9% increase in flood prevention benefits. 
+  #       - Highlight 3
+  docx: 
+    reference-doc: template.docx
+    number-sections: true
+---
+
+<!-- https://www.sciencedirect.com/journal/science-of-the-total-environment/publish/guide-for-authors -->
+<!-- https://www.elsevier.com/researcher/author/tools-and-resources/research-data -->
+
+<!-- TODO: proofread for voice and tense. Avoid passive voice, use past tense.  -->
+
+```{r Load data and libraries}
+#| echo: false
+#| warning: false
+#| message: false
+
+library(ggplot2)
+library(ggpmisc)
+library(kableExtra)
+library(gt)
+library(gtsummary)
+library(dplyr)
+library(arrow)
+library(sf)
+library(EnvStats)
+library(knitr)
+library(latex2exp)
+library(ggthemes)
+
+# TODO: change occtype labels to be understandable (RES1_1S --> Single-Story)
+
+
+# setwd("C:/GitHub/paper_1/manuscript")
+
+
+
+plans <- readxl::read_xlsx("../data/component_quantities_and_depth_damage.xlsx", sheet = "floor_plans")
+x <- read_parquet("../data/fragility_table.parquet")
+components <- read_parquet("../data/fragility_table.parquet") %>%
+  filter(
+    flood_depth %in% c(-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30),
+    run == 0
+  )  %>%
+  select(
+    component = component_x,
+    unit,
+    cost_mean = total_cost_mean,
+    cost_sd = total_cost_sd,
+    co2_mean = unit_co2_mean,
+    co2_sd = unit_co2_sd,
+    flood_depth,
+    fragility
+  ) %>%
+  mutate(
+    flood_depth = paste0('d',flood_depth)
+  ) %>%
+  group_by(component) %>%
+  tidyr::pivot_wider(
+    names_from = flood_depth,
+    values_from = fragility
+  )
+
+dd_curves_usace <- read_parquet("../data/g2crm_dmg_fns.parquet")
+dd_curves_usace$source <- "G2CRM"
+rows_to_add <- tail(dd_curves_usace[dd_curves_usace$flood_depth == 24,], 2) %>% mutate(flood_depth = 31.9)
+dd_curves_usace <- rbind(dd_curves_usace, rows_to_add)
+
+dd_curves_gec <- read_parquet("../data/gec_dmg_fns.parquet")
+
+dd_curves_gcs <- read_parquet("../data/gcs_dmg_fns.parquet")
+dd_curves_gcs2 <- read_parquet("../data/gcs_dmg_fns2.parquet")
+dd_curves_study <- read_parquet("../data/study_dmg_fns.parquet")
+
+
+
+dd_curves <- plyr::rbind.fill(dd_curves_study, dd_curves_gec) %>%
+  filter(flood_depth >= -4)
+
+dd_curves$dmg_low_fix <- dd_curves$dmg_low * (dd_curves$dmg_low > 0)
+
+mcs_results = read_parquet("../data/mcs_results.parquet")
+streams = st_read("../data/all_streams.geojson", quiet = TRUE)
+svi_all <- readRDS("../data/svi_all.rds") %>%
+  st_drop_geometry()
+
+tract_results <- read_parquet("../data/tract_results.parquet")
+tract_results <- st_as_sf(tract_results) %>%
+  st_set_crs(st_crs(streams)) %>%
+  left_join(
+    svi_all,
+    by = c("GEOID" = "GEOID")
+  )
+
+
+region_results <- read_parquet("../data/region_results.parquet")
+```
+
+:::{custom-style="Abstract"}
+
+**Keywords:** {{< meta keywords1 >}}
+:::
+
+:::{custom-style="Abstract Heading"}
+
+Abstract
+
+:::
+
+:::{custom-style="Abstract"}
+
+{{< meta abstract-text >}}
+
+:::
+{{< pagebreak >}}
+
+# Introduction {#sec-intro}
+
+Floods and storms are the most frequent and devastating natural hazards worldwide and are becoming increasingly so due to climate change [@cred2023a; @portner2022]. In the U.S. alone, more than 2.7 million people were affected by flood and storm disasters from 2013 to 2022, which caused an inflation-adjusted total of $540.2 billion [@cred2023a][^cred_note]. Even if immediate and dramatic efforts are implemented to reduce greenhouse gas (GHG) emissions, flood losses in the U.S. are expected to increase by 24-29% by 2050 due to climate change alone and as much as 97% when considering both climate and population change, disproportionately affecting Black and low-income communities [@wing2022]. Beyond economic costs, the restoration of flooded homes can result in significant greenhouse gas (GHG) emissions. One study estimated that flood damage to a one-story single family residence could cause over 25 tonnes of CO~2eq~ emissions @matthews2021. The U.S. Army Corps of Engineers is the primary agency tasked with developing flood risk management (FRM) projects in the U.S. These projects must be justified by cost-benefit analyses which often rely on deterministic damage functions to estimate the monetary damages caused by floods [@u.s.waterresourcescouncil1983; @davis1992; @dawson2003]. This approach ignores non-monetry impacts such as the GHG emissions associated with reconstruction activities, underestimating the total value of flood losses and thus hindering the implementation of effective FRM solutions which may be more costly.To inform robust FRM decision making, there is a critical need to understand and quantify the GHG emissions associated with flood damages and the associated uncertainty. 
+
+[^cred_note]: EM_DAT disaster records related to natural and technological hazards meet at least one of the following inclusion criteria: 1) At least ten deaths (including dead and missing), 2) At least 100 affected (people affected, injured, or homeless), or 3) A call for international assistance of an emergency declaration.
+
+<!-- Current cost benefit analyses for flood risk management (FRM) projects rely on deterministic damage functions to estimate the monetary damages caused by floods [@u.s.waterresourcescouncil1983; @davis1992; @dawson2003]. This approach limits planners in developing FRM solutions by failing to account for uncertainty in flood risk assessments and failing to consider flood impacts beyond monetary losses such as the GHG emissions associated with reconstruction activities.  -->
+
+<!-- Failure to incorporate the GHG emissions associated with repairing damages may cause planners to underestimate the total value of flood losses and thus hinder the implementation of effective FRM solutions which may be more costly. There have been no efforts to estimate the total GHG emissions associated with flood damages, however, it has been estimated that new residential construction results in the emission of 31 to 55 million tonnes of CO~2~ equivalents per year in the U.S. alone, accounting for up to 1% of the country's total emissions [@magwood2023; @owid-co2-emissions]. To inform robust FRM decision making, there is a critical need to understand and quantify the GHG emissions associated with flood damages and the associated uncertainty.  -->
+  
+Much of the research assessing the GHG emissions caused by floods has focused on impacts to natural ecosystems and their contribution to the carbon cycle [e.g., @gebremichael2017; @oram2020]. Increased urbanization in flood prone areas is expected to be a primary driver future flood risk [@swain2020; @wing2022], yet there has been little effort to assess the how flood impacts on the built environment contribute to GHG emissions. 
+
+<!-- Much of the research assessing the GHG emissions caused by floods has focused on impacts to natural ecosystems and their contribution to the carbon cycle. For example, @gebremichael2017 assessed the effect of flooding on European coastal grassland ecosystems and found that longer-term flooding was associated with a net increase in CO~2~ emissions produced by soil microbes. @oram2020 found that flooding significantly increased the GHG emissions from managed grasslands in the Netherlands and showed that certain plant species can mitigate against this. Increased urbanization in flood prone areas is expected to be a primary driver future flood risk [@swain2020; @wing2022], yet there has been little effort to assess the how flood impacts on the built environment contribute to GHG emissions.  -->
+
+On the other hand, there is an abundance of research assessing the life-cycle environmental impacts of residential construction and material selections to support more sustainable building practices [@haddad2023; @hosseinijou2014; @kong2010; @megange2019; @nagireddi2022; @napolano2015; @salazar2008; @schneider-marin2022; @wang2020a]. Likewise, many studies have assessed the environmental impacts of material choice for maintenance and repairs to residential structures [@caruso2020; @dong2018; @mcgrath2013; @wang2020; @wittocx2022]. Few studies, however, have applied such assessments in the context of natural hazards in general and floods in particular. @adhikari2020 assessed the life-cycle carbon footprint of residential buildings exposed to tornadoes and found that selecting more tornado resistant components tended to be optimal for structures in terms of both life-cycle costs and carbon footprint. @simonen2018 assessed the embodied carbon of various structural and non-structural building components using an economic input-output model to estimate the expected GHG emissions per dollar of damage to buildings impacted by earthquakes. They found that the most carbon intensive materials (e.g. gypsum and glass products) are among the most susceptible to seismic damage and therefore the GHG emissions associated with seismic events do not necessarily increase in proportion to their magnitude. @matthews2016b used a Monte Carlo simulation to estimate life-cycle building component-level flood damages and associated environmental impacts for two design alternatives for a case-study single-family residential structure located in a flood zone. This analysis showed that a more flood resistant design significantly reduced the total life-cycle environmental impact of the structure due to the need for fewer repairs. @hennequin2019a performed a similar assessment for a typical European single-family home and found that experiencing a flood can increase the life-cycle environmental impact of such a building by about 4-18%. @matthews2021 presented a methodology for estimating the GHG emissions associated with flood damages to buildings. They demonstrated this approach in a case study of a one-story single-family home and found that flood damages to this building could cause emissions of over 25 metric tons of CO~2~ equivalents.
+
+These studies show that damages to structures caused by natural hazards can result in significant GHG emissions. However, because these studies focus largely on the effect of material choice and construction design, are not specific to flood damages, or do not account for variability in building design or size, their generalizability to flood risk assessments on a regional scale is limited. 
+
+In this paper, we attempt to address this gap by developing a probabilistic model to quantify the GHG emissions associated with flood damages across different residential building designs. We then developed building-scale damage curves which can be used to assess the GHG emissions and economic costs of flood events. Finally, we applied these damage curves in a spatial analysis to quantity the GHG emissions associated with a 100-year flood event in two testbed regions in the Mississippi River Valley.
+
+<!-- In this paper, we attempt to address this gap by developing a probabilistic model to quantify the GHG emissions associated with flood damages to individual components in residential structures affected by floods. We apply this model in a series of Monte Carlo simulations to assess the building-scale GHG emissions of flood damages across a variety of building construction types and produce building-scale depth-emissions curves which can be used to assess the GHG emissions of flood events affecting multiple structures. Finally, we apply these building-level curves to a real-world flood risk analysis to quantify the GHG emissions associated with a 100-year flood event in two study regions in the Mississippi River Valley.  -->
+
+Through this study, we seek to answer the following research questions: 1) What is the carbon footprint embodied within components of buildings susceptible to damage from floods? 2) What quantity of greenhouse gas emissions is produced due to damages from a 100-year flood event and to what extent do these emissions affect the valuation of risk from this flood event? 3)To what extent does including the impacts of greenhouse gas emissions affect the distribution of risk from a 100-year flood event in the two testbed regions?
+  
+# Methods {#sec-methods}
+
+In the following sections, we describe 1) the development of a component failure model for one- and two-story single-family residential structures which seeks to estimate the quantity of materials to be replaced due to flooding (@sec-fragility); 2) the estimation of replacement cost and life-cycle GHG emissions for each building component (@sec-cost-ghg); 3) the application of the component-failure model and cost/GHG estimates in a series of Monte Carlo simulations to develop depth-damage curves which can be used estimate total replacement costs and GHG emissions at the whole-building level (@sec-bldg-dmg); and 4) a regional analysis of flood damage to residential buildings in the two testbeds of the Mississippi River Valley to assess how including the associated GHG emissions in a flood risk analysis affects the magnitude and distribution of flood risk (@sec-spatial).
+
+
+## Component Failure Model {#sec-fragility}
+
+The first step in our analysis was to develop a model to calculate the expected material quantity of different components to be replaced in a building exposed to a flood of a given depth. To do this, we first developed a list of 56 components for one- and two-story residential buildings, adapted from information obtained from @gec2006. We did not include foundations or structural framing materials in our component list as these would not require replacement due to exposure to flood depth in most cases [@aglan2005; @gec2006]. For most components, we then defined a fragility function which returns the probability that the component will fail and require replacement due to a flood of a given depth. We use this probability as an input into a Bernoulli trial to calculate the quantity of each component to be replaced in each iteration of the Monte Carlo analysis described in @sec-bldg-dmg.
+
+A fragility function is a mathematical model showing the probability that a component will exceed a limit state due to exposure to a stressor of a given magnitude, or intensity measure [@saouma2021, p. 610]. To define the fragility functions for each component, we adapted the methodology outlined in @nofal2020a, using the triangular cumulative distribution function to represent the probability that the component will fail and require replacement at a given flood depth. The triangular distribution is commonly used for risk modeling as it requires minimal information, taking just three parameters: the minimum, maximum, and mode (most likely value) of the model variable, and has been shown to be a suitable replacement for the more robust beta distribution [@johnson1997]. Using this distribution function, we assume that the given component will never fail when the flood depth is below the minimum value and that the component will always fail when the flood is at or above the maximum value. The probability that the given component will fail when the flood depth is between the minimum and maximum values is shown in @eq-triangcdf and @fig-triangcdf. 
+<!-- TODO: combine @eq-triangcdf and @fig-triangcdf into a single figure 
+
+new caption for the combined figure: Triangular Cumulative Distribution Function. $x$ is the depth of flooding relative to the building's first floor elevation, and $a$, $b$, and $c$ are the minimum, maximum, and mode, respectively.
+-->
+
+:::{custom-style="Equation"}
+$$
+P[Failure|Depth = x] = {
+\begin{cases}
+  0 & {\text{for }} x\leq a\\
+  {\frac {(x-a)^{2}}{(b-a)(c-a)}} & {\text{for }} a<x\leq c\\
+  1-{\frac {(b-x)^{2}}{(b-a)(b-c)}} & {\text{for }} c<x<b\\
+  1 & {\text{for }} b\leq x
+\end{cases}
+}
+$$ {#eq-triangcdf}
+:::
+
+```{r triang-cdf}
+#| label: fig-triangcdf
+#| fig-cap: Triangular Cumulative Distribution Function. $x$ is the depth of flooding relative to the building's first floor elevation, and $a$, $b$, and $c$ are the minimum, maximum, and mode, respectively.
+
+
+a <- 0
+b <- 1
+c <- 0.6
+
+x <- seq(0, 1, 0.05)
+xlabs <- c('a', 'c', 'b')
+ybreaks <- ptri(q=c(a,c,b), min=a, max=b, mode=c)
+ylabs <- c('0.0', TeX("$\\frac{c-a}{b-a}$"), '1.0')
+y = ptri(q = x, min=a, max=b, mode=c)
+
+ggplot() +
+  geom_line(aes(x=x, y=y)) +
+  # c vertical line
+  geom_segment(aes(
+    x=c, y=0,
+    xend=c, yend=ybreaks[2]
+    ),
+    linetype='dashed', lwd=0.2
+  ) +
+  # c horizontal line
+  geom_segment(aes(
+    x=0, y=ybreaks[2],
+    xend=ybreaks[2], yend=ybreaks[2]
+  ),
+  linetype='dashed', lwd=0.2
+  ) +
+  # b vertical line
+  geom_segment(aes(
+    x=1, y=0,
+    xend=1, yend=1
+  ),
+  linetype='dashed', lwd=0.2
+  ) +
+  # b horizontal line
+  geom_segment(aes(
+    x=0, y=1,
+    xend=1, yend=1
+  ),
+  linetype='dashed', lwd=0.2
+  ) +
+  scale_x_continuous(
+    name="",
+    breaks=c(a, c, b),
+    labels = xlabs
+  ) +
+  scale_y_continuous(
+    name="",
+    breaks=ybreaks,
+    labels = ylabs
+  ) +
+  theme_few()
+
+
+```
+
+We selected the $a$, $b$, and $c$ parameters for each component based on the expert panel narratives provided in the GEC report [@gec2006, pp. A5-A6]. For example, regarding flood damage to doors, the panel said: 
+
+> "Most doors in residential structures are hollow and are warped and destroyed between 0.0 and 1.0 foot of floodwater. Some higher quality doors can be refinished up to 1.0 foot of floodwater. Doors in commercial structures are usually of solid sturdy wood and are sealed at the top and bottom, helping to prohibit water damage. These doors would only require refinishing at 0.5 foot of floodwater. Some would require replacement at 1.5 feet of floodwater. All doors are totaled at 4.0 feet of floodwater. Hollow metal door frames are never a total loss." [@gec2006]
+
+Based on this description, we developed separate fragility functions for interior and exterior doors, assuming exterior doors are higher quality. For interior doors, we set the minimum, maximum, and most likely failure depths to 0, 0.5, and 2 feet, respectively, and for exterior doors we set these values to 1, 2, and 4 feet, respectively. For some components, the expert panel assumes complete loss as soon as water touches them. In these cases, we parameterize the fragility function based on the range of possible heights for the component within the structure. For example, we assume wall outlets will be located between 12 and 24 inches above the floor with 12 inches being the most likely [@thehomedepot2023]. The fragility function parameters for all components are shown in @tbl-unit. 
+
+We treat each of the components for which we defined a fragility function as discrete items which must be replaced entirely when they fail (e.g., one would not replace only the bottom portion of a flood damaged door). This assumption is not valid for sheetrock/drywall, wall insulation, exterior wall sheathing, roof sheathing, or facade materials. These components can be partially replaced, and the replacement quantity depends on the proportion of the total quantity inundated. Following @matthews2021 and @gec2006, we assume that the proportion of these components which are located below the flood depth will be replaced, while the proportion above the flood depth will be left in place, with an exception for sheetrock/drywall and wall insulation which will be replaced entirely if the flood depth is greater than half the wall height. 
+
+
+## Component Cost and Greenhouse Gas Emission Analysis {#sec-cost-ghg}
+
+Next, we developed a model to estimate the replacement cost and life-cycle GHG emissions of components that fail due to flooding. We gathered material, labor/installation, and equipment cost estimates using the 2022 Building Construction Cost Data from RS Means [@doheny2021] to estimate the total replacement cost for each component (@tbl-unit). We considered multiple material options for each component when available to account for cost variability. For instance, material options for the finished floor underlayment include plywood, particle board, and hardboard in various thicknesses with a total replacement cost ranging from $1.36 to $4.22 per square foot. We then used the replacement cost data for each component to parameterize a triangular distribution which can be used to randomly generate a replacement cost in each iteration of the Monte Carlo analysis described in @sec-bldg-dmg. We set the minimum and maximum distribution parameters equal to the minimum and maximum values gathered from the RS Means data, and we set the most-likely value equal to the mean of the RS Means data. For components where only one cost estimate was available, we set this value as the most-likely and we set the minimum and maximum parameters to be +/- 10% of the estimate. 
+
+We gathered cradle-to-gate life-cycle GHG emissions estimates for each component which include GHG emissions from the raw material extraction, manufacturing, and transportation stages. The unit GHG emissions data for each component was primarily obtained from the Building for Environmental and Economic Sustainability (BEES) version 2.1 LCA database [@nist2023] and the Ecoinvent version 3.9.1 LCA database [@wernet2016; @ecoinvent2023].  We used the TRACI 2.1 method to convert GHG emissions to kg CO~2~ equivalents to represent their 100-year global warming potential. As with replacement costs, we gathered emissions estimates for multiple material options for each component and developed a triangular distribution to represent the variability using the same approach described in the previous paragraph. The min, max, and mean values of the GHG estimates for each component and their sources are shown in @tbl-unit.
+
+Following @gec2006, we assume that when the facade material is brick, brick veneer, or synthetic siding, a flood will not cause enough damage to require replacement. Rather than develop separate damage functions for these materials, we simply set the replacement cost and carbon footprint estimates to zero for these specific materials. Future work should include consideration of material-specific fragility functions; however, this was outside the scope of the present analysis. Detailed information regarding the types of materials considered for each component can be found in the suporting information (SI).
+
+<!-- #TODO: check code to ensure that the mentioned facade material are actually being set to have cost and GHG of 0 -->
+
+\blandscape
+
+```{r component unit cost and co2 table}
+#| tbl-cap: Mean and standard deviations of unit costs and GHG emissions for structure components
+#| label: tbl-unit
+#| width: 9in
+#| warning: false
+#| results: asis
+
+# TODO: Add *** note over Depth tab-span header to indicate that 2nd story depths are shown for structure with 8ft ceiling height, but model adjusts values based on floor plan info.
+
+components2 <- read_parquet("../data/components.parquet") %>%
+  rename(component = component_x) %>%
+  select(
+    component, unit,  min, mode, max, unit_cost_min, unit_cost_mean, unit_cost_max,
+    unit_co2_min, unit_co2_mean, unit_co2_max
+  )
+
+roof <- components2[substr(components2$component, 1, 10) == "Roof Cover",] %>%
+  mutate(
+    component = "Roof Cover"
+  ) %>%
+  group_by(component, unit) %>%
+  summarize(
+    unit_cost_mean = sum(unit_cost_mean),
+    unit_cost_min = sum(unit_cost_min),
+    unit_cost_max = sum(unit_cost_max),
+    unit_co2_mean = sum(unit_co2_mean),
+    unit_co2_min = sum(unit_co2_min),
+    unit_co2_max = sum(unit_co2_max),
+    min = 8,
+    max = 8.01,
+    mode = 8
+  ) %>%
+  select(
+    component, unit,  min, mode, max, unit_cost_min, unit_cost_mean, unit_cost_max,
+    unit_co2_min, unit_co2_mean, unit_co2_max
+  )
+
+components3 <- components2[substr(components2$component, 1, 10) != "Roof Cover",]
+
+components2 <- rbind(components3, roof)
+
+nist_rows <- c(
+      "Underfloor Insulation", "Wood Subfloor", "Finished Floor Underlayment", "Finished Floor", "Wall Paint - Interior", "Wall Paint - Exterior", "Sheetrock/drywall", "Wall Insulation", "Baseboard", "Ceiling", "Ceiling Paint", "Ceiling Insulation", 
+      "Roof Cover", "Roof Sheathing", "Facade", "Exterior Wall Sheathing"
+    )
+nist_rows <- c(nist_rows, paste("2nd Floor", nist_rows))
+
+ecoinvent_rows <- c(
+      "Underfloor Insulation", "Underfloor Ductwork", "Heating/Cooling Unit or HVAC", "Wood Subfloor", "Finished Floor Underlayment", "Bottom Cabinets", "Top Cabinets", "Bathroom Bottom Cabinets", "Bathroom Top Cabinets", "Exterior Doors", "Interior Doors", "Baseboard", "Refrigerator", "Dishwasher", "Microwave", "Clothes Washer", "Clothes Dryer", "Oven/stove", "Range hood", "Bottom Outlets", "Top Outlets", "Light Switches", "Wiring", "Windows"
+    )
+ecoinvent_rows <- c(ecoinvent_rows, paste("2nd Floor", ecoinvent_rows))
+
+component_names <- components2$component
+nist_index <- match(nist_rows, component_names)
+nist_index <- nist_index[!is.na(nist_index)]
+
+ecoinvent_index <- match(ecoinvent_rows, component_names)
+ecoinvent_index <- ecoinvent_index[!is.na(ecoinvent_index)]
+
+raluy_index <- match("Water Heater", component_names)
+adhikari_silva_index <- match("Counter Tops", component_names)
+useeio_index <- match("Electrical Panel", component_names)
+
+components2[,c('ref1', 'ref2', 'ref3', 'ref4', 'ref5')] <- ""
+components2[nist_index, "ref1"] <- "NIST, 2023"
+components2[ecoinvent_index, "ref2"] <- "ecoinvent, 2023"
+components2[raluy_index, "ref3"] <- "Raluy and Dias, 2020"
+components2[adhikari_silva_index, "ref4"] <- "Adhikari et al., 2022; Silva et al., 2021"
+components2[useeio_index, "ref5"] <- "Ingwersen et al., 2022"
+
+components2$co2_ref <- paste0("(",paste(components2$ref1, components2$ref2, components2$ref3, components2$ref4, components2$ref5, sep="; "),")")
+components2$co2_ref <- gsub("; \\)", "\\)",gsub("\\(; ", "\\(", gsub("; ;", ";", gsub("; ;", ";", components2$co2_ref))))
+
+
+# TODO: change footnotes for GHG sources to component name and add text saying "GHG Emissions source:"
+
+components2 %>%
+  select(
+    component, unit,  min, max, mode, unit_cost_min, unit_cost_max, unit_cost_mean,
+    unit_co2_min, unit_co2_max, unit_co2_mean, 
+    # co2_ref
+  ) %>%
+  # filter(substr(component, 1, 1) != "2") %>%
+  gt() %>%
+  fmt_number(
+    columns = c("min", "max", "mode"),
+    decimals = 1
+  ) %>%
+  fmt_number(
+    columns = matches("cost"),
+    n_sigfig = 3
+  ) %>%
+  fmt_number(
+    columns = matches("co2"),
+    n_sigfig = 2
+  ) %>%
+  tab_spanner(
+    label = "Fragility",
+    columns = c("min", "max", "mode")
+  ) %>%
+  tab_spanner(
+    label = "Replacement Cost ($)",
+    columns = matches("cost"),
+    id = "cost"
+  ) %>%
+  tab_spanner(
+    label = md("GHG Emissions (CO~2eq~)"),
+    columns = matches("co2")
+  ) %>%
+  tab_footnote(
+    footnote = "(Doheny, 2021a)",
+    locations = cells_column_spanners(spanners = "cost")
+  ) %>%
+  tab_footnote(
+    footnote = "GHG emissions source: (NIST, 2023)",
+    locations = cells_body(columns = component, rows = nist_index)
+  ) %>%
+  tab_footnote(
+    footnote = "GHG emissions source: (ecoinvent, 2023)",
+    locations = cells_body(columns = component, rows = ecoinvent_index)
+  ) %>%
+  tab_footnote(
+    footnote = "GHG emissions source: (Adhikari et al., 2022; Silva et al., 2021)",
+    locations = cells_body(columns = component, rows = adhikari_silva_index)
+  ) %>%
+  tab_footnote(
+    footnote = "GHG emissions source: (Raluy and Dias, 2020)",
+    locations = cells_body(columns = component, rows = raluy_index)
+  ) %>%
+  cols_label(
+    component = "Component",
+    unit = "Unit",
+    unit_cost_min = "min",
+    unit_cost_max = "max",
+    unit_cost_mean = "mean",
+    unit_co2_min = "min",
+    unit_co2_max = "max",
+    unit_co2_mean = "mean",
+    # co2_ref = "Ref."
+  ) %>%
+  as_latex()
+```
+
+\elandscape
+
+## Building-Level Damage Analysis {#sec-bldg-dmg}
+
+The building-level damage analysis combines the component failure model and the component cost and GHG emissions data to estimate the building-level replacement costs and GHG emissions under different flood depths. To account for variability in building size and design, we analyze 50 real-world floor plans downloaded from the Architectural Designs website including 38 one-story and 12 two-story floorplans (@architecturaldesigns2023). We estimate the total material quantity for all components for each floor plan and calculate the building's total replacement value using @eq-sqft derived from RS Means square foot cost data [@doheny2021a], as building-level damage functions typically represent the total cost of damages to a structure at a given flood depth as a percentage of the structure's total replacement value [@u.s.waterresourcescouncil1983].
+
+:::{custom-style="Equation"}
+$$
+Replacement Cost = 1998.2s^{0.63}f^{0.047} + 8047(b-1)
+$$ {#eq-sqft}
+:::
+
+where $s$ is the total area of the building in square feet, $f$ is the number of floors, and $b$ is the number of bathrooms. 
+
+To develop building-level damage curves, we performed a Monte Carlo analysis on each floor plan.  @fig-flowchart shows a **placeholder** flowchart of the Monte Carlo analysis. The first step in each Monte Carlo analysis was to generate a vector representing flood depth in feet ranging from -2 to 32 incrementing by 0.1 (340 values). Flood depths are relative to the building's first-floor elevations, therefore negative values are included to account for components located below the first-floor level. Then, for each value in this vector, we simulated the impact of a flood of that depth to each component in the building represented by the given floorplan 25 times.
+
+In each simulation, we first calculated the probability of failure for each component under the given flood depth using its fragility function. Next, we estimated the quantity of each component to be replaced by randomly sampling a Bernoulli distribution defined by the component's failure probability and total material quantity [see @papoulis1994, pp. 43-47]. This approach allows us to treat each unit of each component as discrete and independent. For sheetrock/drywall, wall insulation, exterior wall sheathing, and roof sheathing, we calculated the replacement quantity in each simulation according to their damage functions as described in @sec-fragility rather than through the Bernoulli sampling. After calculating the replacement quantity, we randomly generated a unit replacement cost and unit life-cycle carbon footprint for each component using the associated triangular distribution developed in @sec-cost-ghg. Finally, we multiplied each component's replacement quantity by the associated unit cost and carbon footprint to get the total component-level impacts from the given flood. We used the Python library, `NumPy` [@harris2020], to generate all random numbers in this analysis. 
+
+![Placeholder Flowchart](../figures/monte_carlo_flowchart.png){#fig-flowchart}
+
+Once each simulation was complete, we summed the component-level replacement costs and GHG emissions to get the building-level impacts. We monetized the GHG emissions by multiplying them by the U.S. EPA's estimate of the social cost of GHG emissions[^co2-cost-note] of $190 per 1000 kg CO~2eq~, which allows us to directly compare them with the replacement costs and develop emissions-based damage functions which can be incorporated into monetary cost-benefit analyses for FRM projects. Once we completed the Monte Carlo analyses for every floor plan, we aggregated the results at each flood depth to produce probabilistic building-level damage functions. We performed this aggregation separately for one- and two-story structures to maintain compatibility with existing damage function frameworks. 
+
+[^co2-cost-note]: The social cost of CO~2~ emissions estimate used in this study is for emissions produced in the year 2020 with a discount rate of 2%. 
+
+## Spatial Analysis {#sec-spatial}
+
+The purpose of the spatial analysis is to estimate the GHG emissions associated with an actual flood event and to assess the extent to which including GHG emissions in a flood risk assessment affects the magnitude and distribution of risk. To do this, we applied the building-level damage functions to a real-world flood risk analysis in two study regions in the Mississippi River Valley. The first study region is centered around the segment of the Mississippi River stretching from Davenport to Burlington, IA, and the second study region is centered around the intersection of the Mississippi and Ohio Rivers. Study region one has a population of roughly 1.9 million, and the population of region two is roughly 987,000. The study regions and their respective stream networks are shown in @fig-map.
+
+```{r study region map}
+#| fig-cap: Map showing the location of each study region and their respective stream networks. 
+#| label: fig-map
+
+#TODO: improve map
+
+ggplot() +
+  geom_sf(
+    tract_results,
+    mapping = aes(geometry = geometry)
+  ) +
+  geom_sf(
+    streams,
+    mapping = aes(geometry = geometry),
+    color = "blue"
+  ) 
+
+```
+
+We used AutoRoute [@follum2023] to generate 100-year flood depth raster maps for both study regions. Autoroute is a grid-based model that calculates flood extents and depths from elevation, landcover, and stream discharge data. We used elevation data from the National Elevation Dataset [@u.s.geologicalsurvey2022], landcover data from the National Landcover Database [@dewitz2023], and stream segments from the National Hydrography Dataset PlusV2 river network [@mckay2012]. Streamflow data for each stream segment were provided by the U.S. Army Corps of Engineers Coastal & Hydraulics Laboratory. For more information about how the streamflow data were generated, see @memarsadeghi2024. 
+
+We used data from the National Structure Inventory (NSI) [@u.s.armycorpsofengineers2022] to identify residential structures in both study regions. The NSI is designed for use in assessing the consequences of natural hazards and includes information on nearly every structure in the United States such as location, elevation, occupancy and construction type, and replacement cost. We filtered the dataset to include only one- and two-story residential structures and overlaid the 100-year flood raster to determine the flood elevation at the location of each structure and calculated the flood depth relative to the structure's first floor elevation. @tbl-bldg-count shows the number of buildings by type for each region. 
+
+```{r bldg-counts}
+#| tbl-cap: Building counts by region and occupancy type.
+#| label: tbl-bldg-count
+
+bldgs <- read_parquet("../data/region_bldg_count.parquet")
+
+bldgs <- bldgs %>%
+  tidyr::pivot_wider(
+    names_from = occ,
+    values_from = count
+  )
+
+bldgs %>%
+  gt() %>%
+  fmt_number(
+    columns = matches("Story"),
+    decimals = 0
+  ) %>%
+  cols_label(
+    region = "Region"
+  ) %>% as_latex()
+```
+
+Using the damage functions developed in @sec-bldg-dmg, we calculated the cost and GHG emissions from flood damage at each structure and aggregated the results to the census tract level as well as for each entire study region. For each study region, we calculated the total GHG emissions caused by the 100-year flood and the total social cost of these emissions. We compared the total social cost in each region to the total monetary value of flood damages to assess the extent to which including GHG emissions affects the magnitude of flood-induced consequence in the region. We also calculated the percent change in total risk in each census tract to assess whether including GHG emissions affects the distribution of flood risk. 
+
+# Results and Discussion {#sec-results}
+
+## Model Validation {#sec-res-validation}
+
+To validate our model, we compared our building-level damage curves to the damage curves presented in @gec2006 for one- and two-story structures on slab foundations. For both structure types, our damage functions are nearly identical at flood depths below five feet. At higher flood depths, our damage functions begin to diverge from those in @gec2006, with our model estimating lower damages on average than those presented in the report. The difference between our damage estimates and those in the report are greatest for flood depths around 9 to 13 feet, with our estimates being about 10 percentage points lower than @gec2006. For one story structures, the report assumes damages will peak at a flood depth of about 12 feet, while damage estimates from our model continue to increase slightly up to depths of about 20 feet. @gec2006 assumes damages for two-story structures will peak at a depth of 13 feet. Our model predicts damages will continue to increase until a depth of about 25 feet, at which point our average estimate is again almost identical to the estimate from the report. Except for the estimates for two-story structures for depths between 9 and 11 feet, the damage estimates in @gec2006 were within two standard deviations of the mean damage estimates produced by our model as shown in @fig-dmgcompare. Differences between the estimates may be caused by considering different material options for each component, changes in the relative prices of each component, or differences in the layout of buildings used in this study versus those used in @gec2006.
+
+
+```{r}
+#| fig-cap: Comparison of study damage functions to G2CRM damage functions for single-family residential structures.
+#| label: fig-dmgcompare
+
+dd_curves <- dd_curves %>%
+  mutate(
+    occdesc = if_else(
+      occtype == "RES1-1S",
+      "One Story",
+      "Two Story"
+    )
+  )
+
+ggplot(dd_curves) +
+  geom_ribbon(
+    aes(
+      x = flood_depth,
+      ymin = dmg_low_fix,
+      ymax = dmg_high,
+      fill = source
+    ),
+    alpha = 0.4
+  ) +
+  geom_line(
+    aes(
+      x = flood_depth,
+      y = dmg_mean,
+      color = source
+    ),
+    lwd = 1.5
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    # title = "Depth-Damage Curves for Single-Family Residential Structures",
+    x = "Flood Depth (ft)",
+    y = "Damage Cost (% Structure Value)"
+  ) +
+  theme(
+    legend.position = 'bottom'
+  ) +
+  facet_wrap(~ occdesc)
+
+```
+
+## Greenhouse Gas Analysis Results {#sec-res-floorplan}
+
+<!-- look up and report actual mean and 95%CI -->
+
+The results of our GHG analysis show that at the highest flood depths, flood damages can cause up to 35,700 kg CO~2eq~ (+/- 17,000) in GHG emissions for one-story single-family residential buildings and up to 57,000 kg CO~2eq~ (+/- 29,000) for two-story buildings. @fig-ghgcurve shows the depth-emissions curves generated from our analysis. Much of this variation is due to the variation in building design from the floor plans included in our Monte Carlo analysis. To adjust for this variation and produce damage curves that are more useful to flood risk analyses, we calculated the social cost of the GHG emissions as described in @sec-cost-ghg and reported emissions for each simulation in monetary terms as a percent of the building's total replacement cost. These adjusted damage curves are shown in @fig-ghgcostcurve and show that for the average one-story residential structure, the social cost of flood-induced GHG emissions can be as much as 3.5% of the structure's total replacement value (+/- 0.9%) and as much as 3.7% (+/- 1%) for two-story structures. These results show that accounting for GHG emissions caused by floods can significantly increase the benefit associated with flood prevention. It is unlikely that most structures would ever be exposed to a flood depth of 10 or more feet, however, even for floods reaching just above the first floor elevation the social cost of flood induced GHG emissions are more than 1% of the buildings total replacement value for both one- and two story structures.
+
+<!-- TODO: combine the next two figures into one (use cowplot probably) -->
+
+```{r}
+#| fig-cap: Estimated greenhouse gas emissions resulting from flood damages to single-family residential structures. The dark line indicated the mean estimate from the simulations at each flood depth, and the shaded region shows the 95% confidence interval of the estiamte. 
+#| label: fig-ghgcurve
+
+# dd_curves_study %>%
+#   filter(
+#     abs(flood_depth - 28) < 0.09
+#   ) %>%
+#   select(
+#     occtype,
+#     co2_cost_pct_mean,
+#     mean_co2_cost_pct,
+#     std_co2_cost_pct
+#   )
+
+ggplot(dd_curves_study) +
+  geom_ribbon(
+    aes(
+      x = flood_depth,
+      ymin = co2_low,
+      ymax = co2_high
+    ),
+    alpha = 0.4
+  ) +
+  geom_line(
+    aes(
+      x = flood_depth,
+      y = co2_mean
+    ),
+    lwd = 1.5
+  ) +
+  labs(
+    # title = "Depth-Emissions Curves for Single-Family Residential Structures",
+    x = "Flood Depth (ft)",
+    y = "GHG Emissions (kg CO2eq)"
+  ) +
+  facet_wrap(~ occtype)
+```
+
+We also performed a linear regression analysis to assess the relationship between the replacement cost and GHG emissions of flood damages. @tbl-regression shows the results of this regression and @fig-mcsscatter shows the relationship between these values for each iteration of our Monte Carlo analysis.The regression results indicate that for each additional dollar in flood damages the associated GHG emissions increase by 0.31 kg CO~2eq~ or $0.059 in terms of their social cost. In other words, accounting for the social cost of greenhouse gas emissions would increase the total value of flood damages by nearly 6% using this emission factor. There is, however, significant heteroscedasticity in the bivariate relationship between damage costs and GHG emissions which can be seen in @fig-mcsscatter. This may limit the validity of the emissions factor derived from this analysis, especially for deeper floods. Future work should explore this relationship in more depth and refine the analysis to develop valid emissions factors that could be applied in flood risk analyses. 
+
+```{r}
+#| fig-cap: Social cost of GHG emissions resulting from flood damages as a percentage of total structure value. The dark line indicated the mean estimate from the simulations at each flood depth, and the shaded region shows the 95% confidence interval of the estimate. 
+#| label: fig-ghgcostcurve
+#| echo: false
+#| warning: false
+
+dd_curves_study %>%
+  mutate(
+    co2_cost_pct_low = if_else(
+      co2_cost_pct_low < 0,
+      0,
+      co2_cost_pct_low
+    )
+  ) %>%
+  ggplot() +
+  geom_ribbon(
+    aes(
+      x = flood_depth,
+      ymin = co2_cost_pct_low,
+      ymax = co2_cost_pct_high
+    ),
+    alpha = 0.4
+  ) +
+  geom_line(
+    aes(
+      x = flood_depth,
+      y = co2_cost_pct_mean
+    ),
+    lwd = 1.5
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Flood Depth (ft)",
+    y = "Social Cost of GHG Emissions (% Structure Value)"
+  ) +
+  facet_wrap(~ occtype)
+```
+
+```{r}
+#| fig-cap: Scatterplot showing the relationship between damage costs and GHG emissions from MCS results
+#| label: fig-mcsscatter
+#| echo: false
+#| warning: false
+
+#TODO: add results table to figure
+
+ggplot(mcs_results, aes(
+      x = sum_damage_triang,
+      y = sum_co2_triang
+      # x = co2_cost_pct,
+      # y = damage_pct_rs
+    )) +
+  geom_point(
+    alpha = 0.4,
+    shape = '.',
+    size = 2
+  ) +
+  labs(
+    x = "Damage Cost",
+    y = "GHG Emissions (kg CO2eq)"
+  ) +
+  scale_x_continuous(labels = scales::dollar_format()) +
+  stat_poly_line() +
+  stat_poly_eq()
+```
+
+```{r}
+#| tbl-cap: Linear regression results of GHG emissions versus damage costs. 
+#| label: tbl-regression
+#| echo: false
+
+mcs_results <- mcs_results %>%
+  mutate(damage_cost = sum_damage_triang)
+
+model = lm(
+  formula = sum_co2_triang ~ damage_cost,
+  data = mcs_results
+)
+
+model_pct = lm(
+  formula = co2_cost_pct ~ damage_pct_rs,
+  data = mcs_results
+)
+
+model %>%
+  tbl_regression(
+    intercept = TRUE,
+    conf.int = FALSE
+  ) %>%
+  modify_header(
+    label = "**Coefficient**",
+    estimate = "**Estimate**"
+  ) %>%
+  add_glance_table(include = c(r.squared)) %>%
+  as_gt() %>%
+  as_latex()
+```
+
+## Spatial Analysis Results
+
+We modelled the 100-year flood event in two study regions in the Mississippi River Valley and determined the depth of flooding at each residential structure in both regions. Using the damage functions developed in @sec-bldg-dmg we estimated the total cost and GHG emissions resulting from damages caused by these floods. We estimated that the 100-year flood would cause $234.6 million in direct damages in the Burlington-Davenport region and $180.4 million in the Paducah-Cairo region without considering the GHG associated costs. Our results show that including the social cost of GHG emissions caused by these damages would increase the total valuation of risk for the 100-year flood by 8.48% in the Burlington-Davenport region and 8.07% in the Paducah-Cairo region. These results are shown in @tbl-region-result. 
+
+```{r region result}
+#| tbl-cap: Total damages and GHG emissions from the 100-year flood in each study region
+#| label: tbl-region-result
+
+region_results$region <- c("Burlington-Davenport", "Paducah-Cairo")
+
+region_results %>%
+  mutate(
+    co2_mean_cost = co2_mean_sum * 0.19,
+    pct_change_mean = pct_change_mean - 1,
+    # dmg_mean_sum = dmg_mean_sum / 1e6,
+    co2_mean_sum = co2_mean_sum / 1e6,
+    # co2_mean_cost = co2_mean_cost /1e6
+  ) %>%
+  select(
+    c(region, dmg_mean_sum, co2_mean_sum, co2_mean_cost, pct_change_mean)
+  ) %>%
+  gt() %>%
+  fmt_currency(
+    columns = c(dmg_mean_sum, co2_mean_cost),
+    suffixing = TRUE
+  ) %>%
+  fmt_percent(
+    columns = pct_change_mean
+  ) %>%
+  fmt_number(
+    columns = co2_mean_sum,
+    decimals = 2
+  ) %>%
+  cols_label(
+    region = "Region",
+    dmg_mean_sum = "Total Damage Cost",
+    co2_mean_sum = md("Total GHG Emissions (10^6 kg CO~2eq~)"),
+    co2_mean_cost = "Total GHG Social Cost",
+    pct_change_mean = "Cost Increase From GHG"
+  ) %>%
+  as_latex()
+```
+
+We also assessed how accounting for the GHG emissions from the 100-year flood would affect the distribution of risk in each study region. @fig-tract-result shows the percent increase in the total estimated value of 100-year flood damages in after adding the social cost of GHG emissions to the cost of direct damages in each census tract of the study regions. The change in risk valuation was not uniform across the study regions. The percent increase in total risk ranged from 1.58% to 13.6% in the Burlington-Davenport region and ranged from 3.42% to 15.6% in the Paducah-Cairo region. These results could have significant implications for flood risk management. We showed that on average, accounting for GHG emissions could increase the valuation of flood risk and thereby the benefit of flood prevention by over 8%. However, by considering the distribution of both direct impacts and the resulting GHG emissions and developing project alternatives which prioritize flood prevention in areas with the greatest total risk, planners may be able to achieve even greater benefit assessments in their projects. 
+
+```{r tract result}
+#| label: fig-tract-result
+#| fig-cap: Percent change in total damages from the 100-year flood after including the social cost of GHG emissions. Tracts in gray did not experience any damages to residential structures from the 100-year flood. 
+
+tract_results %>%
+  mutate(
+    pct_change_mean = pct_change_mean - 1
+  ) %>%
+  ggplot() +
+    geom_sf(aes(fill = pct_change_mean), color = NA) +
+    scale_fill_distiller(
+      name = "Percent Change",
+      labels = scales::percent,
+      palette = "YlOrRd",
+      direction = 1
+    )
+```
+
+We also assessed how the risk attributed to GHG emissions was associated with social vulnerability at the tract level. @fig-svi shows the relationship between the Social Vulnerability Index score for each tract and the percent increase in total risk when accounting for GHG emissions. Our results show that census tracts in both study regions with higher levels of social vulnerability tend to see greater increases in their valuation of total flood risk when accounting for GHG emissions. The implication of this finding is that including GHG emissions and the distribution of risk in flood risk assessments may help planners to prioritize flood prevention in areas with populations more susceptible to flooding and thus help to address issues of equity which have largely been ignored in flood risk management [@seigerman2023].
+
+```{r}
+#| label: fig-svi
+#| fig-cap: Relationship between tract-level social vulnerability index and percent change in total damage cost when considering GHG emissions. 
+tract_results %>%
+  mutate(
+    region = gsub(
+      "burlington_davenport",
+      "Burlington-Davenport",
+      gsub(
+        "paducah_cairo",
+        "Paducah-Cairo",
+        region.x
+      )
+    )
+  ) %>%
+  filter(!is.na(pct_change_mean)) %>%
+  ggplot(aes(x = rpl_themes, y = pct_change_mean - 1)) +
+  geom_point() +
+  stat_poly_line() +
+  stat_poly_eq() +
+  labs(
+    x = "Social Vulnerability Index",
+    y = "Cost Increase From GHG"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~ region, nrow = 2)
+
+x <- tract_results %>%
+  mutate(
+    region = gsub(
+      "burlington_davenport",
+      "Burlington-Davenport",
+      gsub(
+        "paducah_cairo",
+        "Paducah-Cairo",
+        region.x
+      )
+    ),
+    pct_change_mean = pct_change_mean - 1
+  ) %>%
+  filter(!is.na(pct_change_mean)) %>%
+  group_by(region) %>%
+  summarize(
+    min_pct = min(pct_change_mean) * 100,
+    max_pct = max(pct_change_mean) * 100
+  ) %>% st_drop_geometry()
+```
+
+# Conclusion
+
+The purpose of this study was to assess the GHG emissions associated with flood damages and to develop damage functions which can be used to quantify emissions in real-world FRM projects. We developed depth-emissions curves for both one- and two-story single-family residential structures through a rigorous approach which incorporated uncertainty in building design, material choice, and failure probability. We used these curves to estimate the GHG emissions associated with a 100-year flood event in two study regions and found that accounting for the social cost of these emissions increases the valuation of flood risk by more than 8%. We also found that the distribution of this increase in valuation is not uniform, with a greater increase being seen in census tracts with higher levels of social vulnerability. By utilizing the depth-emissions curves developed in this study, planners can more comprehensively assess the risk posed by flooding and develop mitigation solutions which address this risk more equitably. 
+
+A limitation of this study is that we only developed damage functions for one- and two-story residential structures. While these structure types represent a majority of residential structures in our study regions, this may not be the case elsewhere. Future work should include the development of depth-emissions curves for additional structure types including multi-family housing and commercial structures. Another limitation is that our spatial analysis only assessed the impacts of riverine flooding and only of one return period. Future studies should assess the GHG emissions associated with coastal flooding and consider flood events of various return periods to produce a more comprehensive assessment of risk. 
+
+The results of this work will help planners better assess the environmental impacts of future flood events and the potential benefits of future FRM projects. Incorporating these impacts into cost-benefit analyses may justify additional investment into flood mitigation efforts and may also promote the development of more sustainable FRM practices. 
+
+# Acknowledgements {.appendix}
+:::{custom-style="Funding"}
+
+We would like to thank Natalie Memarsadeghi, Adam Sisco, and Ahmad Tavakoly from the U.S. Army Corps of Engineers Coastal & Hydraulics Laboratory for providing the stream flow data used in our analysis and for providing guidance on generating flood maps with AutoRoute. 
+
+:::
+
+# Funding {.appendix}
+:::{custom-style="Funding"}
+
+{{< meta support >}}
+
+:::
+
+
+
+# References
+
+::: {#refs}
+:::
+

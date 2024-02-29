@@ -1,5 +1,12 @@
 *.tif
-
+*.gpkg
+nsi_flood_depths_geo.parquet
+nsi_flood_depths.parquet
+mcs_results.parquet
+USEEIOv2.0.1-411.rds
+manuscript/*_cache/
+manuscript/*_files/
+manuscript/_extensions
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

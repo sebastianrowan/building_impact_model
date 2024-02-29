@@ -1,0 +1,198 @@
+---
+title: Tables and figures
+date: today
+author:
+    - name: Sebastian Rowan
+      orcid: 0000-0002-0085-3906
+      email: Sebastian.Rowan@unh.edu
+      affiliation:
+        - id: unh
+          name: University of New Hampshire
+          department: Civil and Environmental Engineering
+          city: Durham
+          state: NH
+          country: USA
+          postal-code: 03824
+        - id: erdc
+          name: U.S. Army Corps of Engineers, Engineer Research Development Center
+          city: Vicksburg
+          state: MS
+          country: USA
+          postal-code: 39180
+        roles: [conceptualization, data curation, formal analysis, investigation, methodology, project administration, software, visualization, writing, editing]
+    - name: Weiwei Mo
+      orcid: 0000-0002-1893-0797
+      email: Weiwei.Mo@unh.edu
+      affiliation:
+        - ref: unh
+      roles: [conceptualization, methodology, project administration, supervision, editing]
+funding: "This research was supported in part by an appointment to the Department of Defense (DOD) Research Participation Program administered by the Oak Ridge Institute for Science and Education (ORISE) through an interagency agreement between the U.S. Department of Energy (DOE) and the DOD. ORISE is managed by ORAU under DOE contract number DE-SC0014664. All opinions expressed in this paper are the authors' and do not necessarily reflect the policies and views of DOD, DOE, or ORAU/ORISE."
+execute:
+  echo: false
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+library(ggplot2)
+library(ggpmisc)
+library(gtsummary)
+library(dplyr)
+library(arrow)
+library(sf)
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+
+dd_curves_usace <- read_parquet("../data/g2crm_dmg_fns.parquet")
+dd_curves_usace$source <- "G2CRM"
+
+dd_curves_gcs <- read_parquet("../data/gcs_dmg_fns.parquet")
+dd_curves_gcs2 <- read_parquet("../data/gcs_dmg_fns2.parquet")
+dd_curves_study <- read_parquet("../data/study_dmg_fns.parquet")
+
+dd_curves <- plyr::rbind.fill(dd_curves_study, dd_curves_usace) %>%
+  filter(flood_depth >= -4)
+
+mcs_results = read_parquet("../data/mcs_results.parquet")
+
+tract_results <- read_parquet("../data/tract_results.parquet")
+tract_results <- st_as_sf(tract_results)
+
+region_results <- read_parquet("../data/region_results.parquet")
+```
+
+```{r}
+#| fig-cap: Comparison of study damage functions to G2CRM damage functions for single-family residential structures.
+
+ggplot(dd_curves) +
+  geom_ribbon(
+    aes(
+      x = flood_depth,
+      ymin = dmg_low,
+      ymax = dmg_high,
+      fill = source
+    ),
+    alpha = 0.4
+  ) +
+  geom_line(
+    aes(
+      x = flood_depth,
+      y = dmg_mean,
+      color = source
+    ),
+    lwd = 1.5
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Depth-Damage Curves for Single-Family Residential Structures",
+    x = "Flood Depth (ft)",
+    y = "Loss Ratio"
+  ) +
+  facet_wrap(~ occtype)
+
+```
+
+```{r}
+#| fig-cap: Estimated greenhouse gas emissions resulting from flood damages to single-family residential structures.
+
+ggplot(dd_curves_study) +
+  geom_ribbon(
+    aes(
+      x = flood_depth,
+      ymin = co2_low,
+      ymax = co2_high
+    ),
+    alpha = 0.4
+  ) +
+  geom_line(
+    aes(
+      x = flood_depth,
+      y = co2_mean
+    ),
+    lwd = 1.5
+  ) +
+  labs(
+    title = "Depth-Emissions Curves for Single-Family Residential Structures",
+    x = "Flood Depth (ft)",
+    y = "GHG Emissions (kg CO2eq)"
+  ) +
+  facet_wrap(~ occtype)
+```
+
+```{r}
+#| fig-cap: Social cost of GHG emissions resulting from flood damages as a percentage of total structure value.
+#| echo: false
+#| warning: false
+
+ggplot(dd_curves_study) +
+  geom_ribbon(
+    aes(
+      x = flood_depth,
+      ymin = co2_cost_pct_low,
+      ymax = co2_cost_pct_high
+    ),
+    alpha = 0.4
+  ) +
+  geom_line(
+    aes(
+      x = flood_depth,
+      y = co2_cost_pct_mean
+    ),
+    lwd = 1.5
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Depth-Emissions Curves for Single-Family Residential Structures",
+    x = "Flood Depth (ft)",
+    y = "Social Cost of GHG Emissions (% Structure Value)"
+  ) +
+  facet_wrap(~ occtype)
+```
+
+```{r}
+#| fig-cap: Scatterplot showing the relationship between damage costs and GHG emissions from MCS results
+#| echo: false
+#| warning: false
+
+ggplot(mcs_results, aes(
+      x = sum_damage_triang,
+      y = sum_co2_triang
+    )) +
+  geom_point(
+    alpha = 0.4,
+    shape = '.',
+    size = 2
+  ) +
+  labs(
+    title = "GHG emissions per dollar of damage",
+    x = "Damage Cost",
+    y = "GHG Emissions (kg CO2eq)"
+  ) +
+  scale_x_continuous(labels = scales::dollar_format()) +
+  stat_poly_line() +
+  stat_poly_eq()
+```
+
+```{r}
+#| tbl-cap: Linear regression results of GHG emissions versus damage costs. 
+#| echo: false
+
+model = lm(
+  formula = sum_co2_triang ~ sum_damage_triang,
+  data = mcs_results
+)
+
+model %>%
+  tbl_regression(
+    intercept = TRUE,
+    conf.int = FALSE
+  ) %>%
+  modify_header(
+    label = "**Variable**",
+    estimate = "**Estimate**"
+  ) %>%
+  add_glance_table(include = c(r.squared)) 
+```
+
+
