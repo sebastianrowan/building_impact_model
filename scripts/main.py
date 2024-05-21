@@ -12,7 +12,7 @@ import matplotlib.ticker as mtick
 import os
 
 MIN_DEPTH = -2
-MAX_DEPTH = 30
+MAX_DEPTH = 32
 STEP = .1
 N = 25
 SEED = 521871
@@ -198,4 +198,4 @@ def save_components():
     components.to_parquet("../data/components.parquet")
 
 if __name__ == "__main__":
-    save_components()
+    main()
