@@ -4,16 +4,20 @@ Functions to parse data stored in files into dataframes for analysis
 import math
 import pandas as pd
 from calculations import *
+import sys
 
 def parse_floorplan(plan):
-    # component_df rows as tuples:
-    # copy and paste from excel
-    # (component, type, unit, failure_calculation, quantity, min, max, mode, slab, pier, crawl, basement, mobile, naics_code, ecoinvent_id, ecoinvent_co2e, useeio_co2e),
-    columns = ('component', 'component_type', 'unit', 'unit_cost', 'failure_calculation', 'quantity', 'min', 'max', 'mode', 'slab', 'pier', 'crawl', 'basement', 'mobile', 'naics_code', 'ecoinvent_id', 'ecoinvent_co2e', 'useeio_co2e')
+    columns = (
+        'component', 'component_type', 'unit', 'unit_cost',
+        'failure_calculation', 'quantity', 'min', 'max', 'mode',
+        'slab', 'pier', 'crawl', 'basement', 'mobile',
+        'naics_code', 'ecoinvent_id', 'ecoinvent_co2e', 'useeio_co2e'
+    )
 
-    plan['roof_area'] = calc_roof_area(plan['roof_length'], plan['roof_pitch'], plan['roof_height'], plan['ridge_height'], 999)
+    plan['roof_area'] = calc_roof_area(plan['roof_footprint'], plan['roof_pitch'])
 
-    #TODO: Consider converting this to yaml for easier reading and editing.
+    #TODO: There is probably a better way to handle this with a yaml or json schema for each component so these can be read from a csv of xlsx.
+    # this method is used right now because for many components the quantity and/or fragility parameters are dependent on floorplan characteristics
     components = [
         ('Underfloor Insulation', 'structure', 'sqft', 0, 'fail_count',  plan['floor_area1'], -0.5, -0.499, -0.5, 'No', 'Yes', 'Yes', 'No', 'No', 0, 0, 0, 0),
 
@@ -33,7 +37,7 @@ def parse_floorplan(plan):
         ('Wall Paint - Exterior', 'structure', 'sqft', 0, 'fail_count',  plan['ext_wall_len1']*plan['ceiling_height1']*plan['num_floors'], 0, 0.01, 0, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Exterior Doors', 'structure', 'ea', 0, 'fail_count',  plan['n_ext_door1'], 1, 4, 2, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Interior Doors', 'structure', 'ea', 0, 'fail_count',  plan['n_int_door1'], 0, 2, 0.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
-        ('Sheetrock/drywall', 'structure', 'sqft', 0, 'calc_drywall_insulation',  plan['int_wall_len1']*plan['ceiling_height1'], 0, 4, 4, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 'https://v391.ecoquery.ecoinvent.org/Details/PDF/9cd6e04e-a5d9-4b1e-a1e4-6e21e959b4cf/290c1f85-4cc4-4fa1-b0c8-2cb7f4276dce', 0.29, 0),
+        ('Sheetrock/drywall', 'structure', 'sqft', 0, 'calc_drywall_insulation',  (plan['int_wall_len1'] + plan['int_wall_len_garage'])*plan['ceiling_height1'], 0, 4, 4, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 'https://v391.ecoquery.ecoinvent.org/Details/PDF/9cd6e04e-a5d9-4b1e-a1e4-6e21e959b4cf/290c1f85-4cc4-4fa1-b0c8-2cb7f4276dce', 0.29, 0),
         ('Wall Insulation', 'structure', 'sqft', 0, 'calc_drywall_insulation',  plan['ext_wall_len1']*plan['ceiling_height1'], 0, 4, 4, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Baseboard', 'structure', 'ft', 0, 'fail_count',  plan['int_wall_len1'], 0, 0.01, 0, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Refrigerator', 'structure', 'ea', 0, 'fail_count', 1, 0.5, 1.5, 1, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
@@ -47,7 +51,7 @@ def parse_floorplan(plan):
         ('Top Outlets', 'structure', 'ea', 0, 'fail_count',  plan['n_bath1'] + 3, 3, 4, 4, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Light Switches', 'structure', 'ea', 0, 'fail_count',  2 * (plan['n_int_door1'] + plan['n_ext_door1']), 3, 4, 4, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Electrical Panel', 'structure', 'ea', 0, 'fail_count', 1, 3, 5, 4.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
-        ('Windows', 'structure', 'ea', 0, 'fail_count',  plan['n_window1'], 2, 20, 5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
+        ('Windows', 'structure', 'ea', 0, 'fail_count',  plan['n_window1'], 2, plan['ceiling_height1']-2, (plan['ceiling_height1']/2), 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Ceiling Paint', 'structure', 'sqft', 0, 'fail_count',  plan['floor_area1'], plan['ceiling_height1'], plan['ceiling_height1'] + 0.01, plan['ceiling_height1'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Ceiling', 'structure', 'sqft', 0, 'fail_count',  plan['floor_area1'], plan['ceiling_height1'], plan['ceiling_height1'] + 0.01, plan['ceiling_height1'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Ceiling Insulation', 'structure', 'sqft', 0, 'fail_count',  (plan['floor_area1'] if plan['num_floors'] == 1 else 0), plan['ceiling_height1'], plan['ceiling_height1'] + 0.01, plan['ceiling_height1'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
@@ -100,7 +104,7 @@ def parse_floorplan(plan):
         ('2nd Floor Blinds', 'contents', 'ea', 0, 'fail_count',  plan['n_bed2'], plan['ceiling_height1'] + 1 + 6, plan['ceiling_height1'] + 1 + 7, plan['ceiling_height1'] + 1 + 6.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Curtains/Drapes', 'contents', 'ea', 0, 'fail_count',  plan['n_window2'], plan['ceiling_height1'] + 1 + 0, plan['ceiling_height1'] + 1 + 8, plan['ceiling_height1'] + 1 + 4, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Bookcase', 'contents', 'ea', 0, 'fail_count',  plan['n_bed2'], plan['ceiling_height1'] + 1 + 0, plan['ceiling_height1'] + 1 + 0.5, plan['ceiling_height1'] + 1 + 0, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
-        ('2nd Floor Windows', 'structure', 'ea', 0, 'fail_count',  plan['n_window2'], plan['ceiling_height1'] + 1 + 2, plan['ceiling_height1'] + 1 + 20, plan['ceiling_height1'] + 1 + 5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
+        ('2nd Floor Windows', 'structure', 'ea', 0, 'fail_count',  plan['n_window2'], plan['ceiling_height1'] + 1 + 2, plan['ceiling_height1'] + 1 + 6, plan['ceiling_height1'] + 1 + 4, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Ceiling', 'structure', 'ea', 0, 'fail_count',  plan['floor_area2'], plan['ceiling_height1'] + 1 + plan['ceiling_height2'], plan['ceiling_height1'] + 1.01 + plan['ceiling_height2'], plan['ceiling_height1'] + 1 + plan['ceiling_height2'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Ceiling Insulation', 'structure', 'ea', 0, 'fail_count',  (plan['floor_area2'] if plan['num_floors'] > 1 else 0), plan['ceiling_height1'] + 1 + plan['ceiling_height2'], plan['ceiling_height1'] + 1.01 + plan['ceiling_height2'], plan['ceiling_height1'] + 1 + plan['ceiling_height2'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Bottom Outlets', 'structure', 'ea', 0, 'fail_count',  math.ceil(plan['int_wall_len2']/12), plan['ceiling_height1'] + 1 + 1, plan['ceiling_height1'] + 1 + 2, plan['ceiling_height1'] + 1 + 1.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
@@ -134,6 +138,3 @@ def parse_floorplan(plan):
     for col in ['component_type', 'unit', 'failure_calculation', 'slab', 'pier', 'crawl', 'basement', 'mobile']:
         df[col] = df[col].astype('category')
     return(df)
-
-if __name__ == "__main__":
-    print("Whoops")

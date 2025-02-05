@@ -8,8 +8,18 @@ from scipy.stats import triang
 import sys
 import math
 
-def main():
-    print("Hello World")
+def generate_simulations(components, min, max, d, i):
+    depths = generate_floods(min, max, d, i)
+    return(depths.merge(components, how = 'cross'))    
+
+
+def generate_floods(min, max, d, i):
+    # np.random.seed(1234)
+    x = np.arange(i)
+    y = np.arange(min, max, d)
+    z = np.array(np.meshgrid(x, y)).T.reshape(-1, 2)
+    floods = pd.DataFrame(z, columns=["run", "flood_depth"])
+    return(floods)
 
 def calc_unit_cost_co2_normal(rng, mean, sd):
     return(rng.normal(mean, sd))
@@ -22,7 +32,7 @@ def fail_count_check(n, min, max, mode, depth):
     l = min
     s = max - min
     c = (mode - min) / s
-    return(triang.cdf(depth, c, l, s))
+    return(triang.cdf(depth, c, l, s)) # can this be calculated using the rng.triangular available in numpy???
 
 def fail_prob(min, max, mode, depth):
     l = min
@@ -65,10 +75,13 @@ def calc_drywall_insulation_pct(min, mode, max, depth):
     return(np.maximum(y, ((y > mode) * max))/max)
 
 
-def calc_roof_area(len, pitch, roof_height, ridge_height, depth):
+def calc_roof_area_old(len, pitch, roof_height, ridge_height, depth):
     d = np.minimum(depth, ridge_height)
     y = (d - roof_height) * (d > roof_height)
     return(np.sqrt(np.square(y) + np.square(y/pitch)) * len * 1.15)
+
+def calc_roof_area(area, pitch):
+    return(area/np.cos(np.arctan(pitch)))
 
 
 def calc_facade(quantity, min, max, depth):
@@ -89,9 +102,9 @@ def calc_facade_pct(min, max, depth):
 
 
 def flood_structure2(components):
-    fc = components[components['failure_calculation'] == 'fail_count'].copy(deep=True)
-    dw = components[components['failure_calculation'] == 'calc_drywall_insulation'].copy(deep=True)
-    fd = components[components['failure_calculation'] == 'calc_facade'].copy(deep=True)
+    fc = components[components['failure_calculation'] == 'fail_count']
+    dw = components[components['failure_calculation'] == 'calc_drywall_insulation']
+    fd = components[components['failure_calculation'] == 'calc_facade']
 
 
     fc['fragility'] = fail_prob(
@@ -116,31 +129,31 @@ def flood_structure2(components):
     return(pd.concat([fc, dw, fd]))
 
 def flood_structure(components):
-    fc = components[components['failure_calculation'] == 'fail_count'].copy(deep=True)
-    dw = components[components['failure_calculation'] == 'calc_drywall_insulation'].copy(deep=True)
-    fd = components[components['failure_calculation'] == 'calc_facade'].copy(deep=True)
+    fc = components[components['failure_calculation'] == 'fail_count']
+    dw = components[components['failure_calculation'] == 'calc_drywall_insulation']
+    fd = components[components['failure_calculation'] == 'calc_facade']
 
 
-    fc['damage_quantity'] = fail_count(
-        fc['quantity'],
-        fc['min'],
-        fc['max'],
-        fc['mode'],
-        fc['flood_depth']
+    fc.loc[:,'damage_quantity'] = fail_count(
+        fc.loc[:,'quantity'],
+        fc.loc[:,'min'],
+        fc.loc[:,'max'],
+        fc.loc[:,'mode'],
+        fc.loc[:,'flood_depth']
     )
-    dw['damage_quantity'] = calc_drywall_insulation(
-        dw['quantity'],
-        dw['min'],
-        dw['max'],
-        dw['mode'],
-        dw['flood_depth'] 
+    dw.loc[:,'damage_quantity'] = calc_drywall_insulation(
+        dw.loc[:,'quantity'],
+        dw.loc[:,'min'],
+        dw.loc[:,'max'],
+        dw.loc[:,'mode'],
+        dw.loc[:,'flood_depth'] 
     )
 
-    fd['damage_quantity'] = calc_facade(
-        fd['quantity'],
-        fd['min'],
-        fd['max'],
-        fd['flood_depth']
+    fd.loc[:,'damage_quantity'] = calc_facade(
+        fd.loc[:,'quantity'],
+        fd.loc[:,'min'],
+        fd.loc[:,'max'],
+        fd.loc[:,'flood_depth']
     )
 
     return(pd.concat([fc, dw, fd]))
@@ -186,8 +199,3 @@ def calc_rs_means_cost(floors: int, sqft: int, baths):
 
     cost = (sqft * intercept * sqft.pow(sqft_coef) * floors.pow(floor_coef)) + (bath * (baths -1))
     return(cost)
-
-
-
-if __name__ == "__main__":
-    main()

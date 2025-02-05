@@ -4,20 +4,6 @@ import timeit
 from parse import *
 import os
 
-def generate_simulations(components, min, max, d, i):
-    depths = generate_floods(min, max, d, i)
-    return(depths.merge(components, how = 'cross'))    
-
-
-def generate_floods(min, max, d, i):
-    # np.random.seed(1234)
-    x = np.arange(i)
-    y = np.arange(min, max, d)
-    z = np.array(np.meshgrid(x, y)).T.reshape(-1, 2)
-    floods = pd.DataFrame(z, columns=["run", "flood_depth"])
-    return(floods)
-
-
 def load_cost_data(path):
     cost = pd.read_excel(path, sheet_name="Cost Data")
 
@@ -84,11 +70,3 @@ def load_co2_data(path):
 
     co2['unit_co2_max'] = co2['unit_co2_max'] + 0.000001 # Negligible difference that prevents divide by 0 error in triangular distribution calculations
     return(co2)
-
-
-def main():
-    print("Whoops!")
-
-
-if __name__ == "__main__":
-    main()
