@@ -5,12 +5,8 @@ import parse
 import calculations
 import utils
 
-from scipy.stats import triang
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
 import datetime
 import os
 
