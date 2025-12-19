@@ -158,7 +158,7 @@ def flood_structure(components):
 
     return(pd.concat([fc, dw, fd]))
 
-def calc_rs_means_cost(floors: int, sqft: int, baths):
+def calc_rs_means_cost(floors, sqft, baths):
     '''
     Estimate total building construction cost from components using tables
     from "Square Foot Costs with RSMeans Data" (The Gordian Group Inc., 2021).
