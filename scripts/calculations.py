@@ -49,7 +49,6 @@ def fail_count(n, min, max, mode, depth):
     l = min
     s = max - min
     c = (mode - min) / s
-    print(depth)
     try:
         x = np.random.binomial(n, triang.cdf(depth, c, l, s))
     except:
@@ -130,9 +129,9 @@ def flood_structure2(components):
     return(pd.concat([fc, dw, fd]))
 
 def flood_structure(components):
-    fc = components[components['failure_calculation'] == 'fail_count']
-    dw = components[components['failure_calculation'] == 'calc_drywall_insulation']
-    fd = components[components['failure_calculation'] == 'calc_facade']
+    fc = components.loc[components['failure_calculation'] == 'fail_count']
+    dw = components.loc[components['failure_calculation'] == 'calc_drywall_insulation']
+    fd = components.loc[components['failure_calculation'] == 'calc_facade']
 
 
     fc.loc[:,'damage_quantity'] = fail_count(

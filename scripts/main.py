@@ -59,7 +59,10 @@ def main():
     # results = generate_component_mcs_results_specific(parse.parse_floorplan(plan0), lca_data)
     
     for index, plan in plans.iterrows():
-        print(index)
+        i = f"{index}"
+        i =int(i)+1 # the only purpose of this is for printing the statement below. Python won't 
+        #  allow operators to be applied directly to index, and I don't understand why.
+        print(f"Running simulations for floor plan {i} of {N}")
         parsed_plan = parse.parse_floorplan(plan.copy(deep=True))
         results = pd.concat([
             results,
@@ -158,7 +161,7 @@ def floorplan_mcs(plan, cost, co2):
     
 
     # print("Aggregating results...")
-    result = result.groupby(['run', 'plan_id', 'sqft', 'num_floors', 'rs_means_cost', 'flood_depth'], observed=True).agg(
+    result = result.groupby(['run', 'plan_id', 'sqft', 'num_floors', 'nbed', 'nbath', 'ncar', 'rs_means_cost', 'flood_depth'], observed=True).agg(
         sum_damage = ('damage_cost_triang', 'sum'),
         sum_co2 = ('damage_co2_triang', 'sum')
     ).reset_index()
@@ -166,27 +169,40 @@ def floorplan_mcs(plan, cost, co2):
     return(result)
 
 def floorplan_mcs_specific(plan, lca_data):
+    plan = plan[(plan['component_type'] == "structure")]
+    floods = np.arange(MIN_DEPTH,MAX_DEPTH,STEP)
+
     rep = len(pd.unique(lca_data.component))
     lca_data_sims = lca_data.groupby('component').sample(N, replace=True, random_state=RNG)
 
     lca_data_sims['run'] = np.tile(np.arange(N),rep)
-    plan = plan[(plan['component_type'] == "structure")].groupby('component').sample(N, replace=True, random_state=RNG)
-
     components = plan.merge(lca_data_sims, how = 'left', left_on = 'component_join', right_on = 'component')
+   
+    
+    components_flooded = components.groupby(['component_x','run']).sample(floods.shape[0],replace=True, random_state=RNG)
+    floods = np.tile(floods,components.shape[0])
 
-    floods = calculations.generate_floods(MIN_DEPTH, MAX_DEPTH, STEP, N)
-    simulations = floods.merge(components, how = 'left', on='run')
+    components_flooded['flood_depth'] = floods
 
-    print(simulations)
+    # lca_data_floods = lca_data_sims.groupby(['component','run']).sample(floods.shape[0],replace=True, random_state=RNG)
+    # floods = np.tile(floods,lca_data_sims.shape[0])
+    # lca_data_floods['flood_depth'] = floods
 
-    result = calculations.flood_structure(simulations)
+    # plan = plan[(plan['component_type'] == "structure")].groupby('component').sample(N, replace=True, random_state=RNG)
 
-    result['damage_cost'] = result['damage_quantity'] * result['unit_cost']
+    # floods = calculations.generate_floods(MIN_DEPTH, MAX_DEPTH, STEP, 1)
+    # simulations = floods.merge(components, how = 'left', on='run')
+
+    result = calculations.flood_structure(components_flooded)
+
+
+    
+    result['damage_cost'] = result['damage_quantity'] * result['total_cost']
     result['damage_co2'] = result['damage_quantity'] * result['kg_co2e_fu']
     
+    # print(result[(result['component_x']=="Facade") & (result['plan_id']=='11700HZ')][['run','plan_id', 'flood_depth', 'component_x', 'total_cost','damage_quantity','damage_cost']])
 
-    # print("Aggregating results...")
-    result = result.groupby(['run', 'plan_id', 'sqft', 'num_floors', 'rs_means_cost', 'flood_depth'], observed=True).agg(
+    result = result.groupby(['run', 'plan_id', 'sqft', 'num_floors', 'nbed', 'nbath', 'ncar', 'rs_means_cost', 'flood_depth'], observed=True).agg(
         sum_damage = ('damage_cost', 'sum'),
         sum_co2 = ('damage_co2', 'sum')
     ).reset_index()
