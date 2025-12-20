@@ -9,14 +9,15 @@ import numpy as np
 import pandas as pd
 import datetime
 import os
+import sys
 
 # What flood depths should be included in the analysis?
 MIN_DEPTH = -1
-MAX_DEPTH = 16
-STEP = .1
+MAX_DEPTH = 16 #16
+STEP = 1
 
 # How many simulations should be generated at each flood depth?
-N = 500
+N = 10 #500
 
 # Where should the results be saved?
 RESULT_FILENAME = f"../results/mcs_res1-all_{N}iter_specific.parquet"
@@ -49,7 +50,7 @@ def main():
     )
 
     plan0 = plans.copy(deep=True).iloc[0]
-    plans = plans.iloc[1:]
+    plans = plans.iloc[1:10]
 
     print("Iterate through floorplans and run MCS...")
     start = datetime.datetime.now()
@@ -103,7 +104,7 @@ def generate_component_mcs_results(plan, cost, co2):
 
 def generate_component_mcs_results_specific(plan, lca_data):
 
-    lca_data_sims = lca_data.group_by('component').sample(N, replace=True, random_state=RNG)
+    lca_data_sims = lca_data.groupby('component').sample(N, replace=True, random_state=RNG)
     lca_data_sims['run'] = np.tile(np.arange(N),plan.shape[0])
 
     components = plan.merge(lca_data_sims, how = 'outer', left_on = 'component_join', right_on = 'component')
@@ -165,14 +166,18 @@ def floorplan_mcs(plan, cost, co2):
     return(result)
 
 def floorplan_mcs_specific(plan, lca_data):
-    lca_data_sims = lca_data.group_by('component').sample(N, replace=True, random_state=RNG)
-    lca_data_sims['run'] = np.tile(np.arange(N),plan.shape[0])
+    rep = len(pd.unique(lca_data.component))
+    lca_data_sims = lca_data.groupby('component').sample(N, replace=True, random_state=RNG)
 
-    components = plan.merge(lca_data_sims, how = 'outer', left_on = 'component_join', right_on = 'component')
-    components = components[(components['component_type'] == "structure")]
+    lca_data_sims['run'] = np.tile(np.arange(N),rep)
+    plan = plan[(plan['component_type'] == "structure")].groupby('component').sample(N, replace=True, random_state=RNG)
+
+    components = plan.merge(lca_data_sims, how = 'left', left_on = 'component_join', right_on = 'component')
 
     floods = calculations.generate_floods(MIN_DEPTH, MAX_DEPTH, STEP, N)
-    simulations = floods.merge(components, how = 'outer', on='run')
+    simulations = floods.merge(components, how = 'left', on='run')
+
+    print(simulations)
 
     result = calculations.flood_structure(simulations)
 
@@ -217,22 +222,22 @@ def print_components():
 
 def test():
     lca_data_path = "../data/component_cost_lca_data.xlsx"
-    N = 10
+    N = 5
     plans = pd.read_excel(lca_data_path, sheet_name="test_fp")
-
     lca_data = pd.read_excel(lca_data_path, sheet_name="test_comp")
+
+    rep = len(pd.unique(lca_data.component))
     lca_data_sims = lca_data.groupby('component').sample(N, replace=True, random_state=RNG)
-    lca_data_sims['run'] = np.tile(np.arange(N),plans.shape[0])
-    joined = plans.merge(lca_data_sims, how = 'outer', left_on='component_join', right_on='component')
+    lca_data_sims['run'] = np.tile(np.arange(N),rep)
+
+    print(lca_data_sims)
+    joined = plans.merge(lca_data_sims, how = 'left', left_on='component_join', right_on='component')
     print(joined)
-    floods = calculations.generate_floods(0, 1, 0.2, N)
-    simulations = floods.merge(joined, how = 'outer', on='run')
+    
+    floods = calculations.generate_floods(0, 1, 0.5, N)
+    simulations = floods.merge(joined, how = 'left', on='run')
     print(simulations)
     return
-
-
-    joined = plans.merge(lca_data, how = 'outer', left_on='component', right_on='component')
-    print(joined)
 
 
 if __name__ == "__main__":

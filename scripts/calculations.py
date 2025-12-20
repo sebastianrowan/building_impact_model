@@ -49,6 +49,7 @@ def fail_count(n, min, max, mode, depth):
     l = min
     s = max - min
     c = (mode - min) / s
+    print(depth)
     try:
         x = np.random.binomial(n, triang.cdf(depth, c, l, s))
     except:
