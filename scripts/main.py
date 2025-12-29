@@ -55,6 +55,11 @@ def main():
     print("Iterate through floorplans and run MCS...")
     start = datetime.datetime.now()
 
+    # **NOTE: parse.parse_floorplan() may cause error when running with original (non-specific component) functions**
+    #         this is because certain components were removed from the parse function during the implementation of 
+    #         coupled cost and lca data. I have not tested it but if it does fail there are two solutions:
+    #           1. remove the components from the cost and lca spreadsheets
+    #           2. uncomment the rows for the removed components from the parse function
     results = floorplan_mcs_specific(parse.parse_floorplan(plan0), lca_data)
     # results = generate_component_mcs_results_specific(parse.parse_floorplan(plan0), lca_data)
     
