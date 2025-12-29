@@ -129,9 +129,9 @@ def flood_structure2(components):
     return(pd.concat([fc, dw, fd]))
 
 def flood_structure(components):
-    fc = components[components['failure_calculation'] == 'fail_count']
-    dw = components[components['failure_calculation'] == 'calc_drywall_insulation']
-    fd = components[components['failure_calculation'] == 'calc_facade']
+    fc = components.loc[components['failure_calculation'] == 'fail_count']
+    dw = components.loc[components['failure_calculation'] == 'calc_drywall_insulation']
+    fd = components.loc[components['failure_calculation'] == 'calc_facade']
 
 
     fc.loc[:,'damage_quantity'] = fail_count(
@@ -158,7 +158,7 @@ def flood_structure(components):
 
     return(pd.concat([fc, dw, fd]))
 
-def calc_rs_means_cost(floors: int, sqft: int, baths):
+def calc_rs_means_cost(floors, sqft, baths):
     '''
     Estimate total building construction cost from components using tables
     from "Square Foot Costs with RSMeans Data" (The Gordian Group Inc., 2021).

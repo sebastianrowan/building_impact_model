@@ -30,7 +30,7 @@ def parse_floorplan(plan):
         ('Bottom Cabinets', 'structure', 'ea', 0, 'fail_count', 1, 0, 1, 0, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Top Cabinets', 'structure', 'ea', 0, 'fail_count', 1, 4.5, 5.5, 4.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Bathroom Bottom Cabinets', 'structure', 'ea', 0, 'fail_count', plan['n_bath1'], 0, 1, 0, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
-        ('Bathroom Top Cabinets', 'structure', 'ea', 0, 'fail_count', plan['n_bath1'], 4.5, 5.5, 4.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
+        # ('Bathroom Top Cabinets', 'structure', 'ea', 0, 'fail_count', plan['n_bath1'], 4.5, 5.5, 4.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Counter Tops', 'structure', 'ea', 0, 'fail_count', 1, 0, 1, 0, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Water Heater', 'structure', 'ea', 0, 'fail_count', 1, 0, 2, 1.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Wall Paint - Interior', 'structure', 'sqft', 0, 'fail_count',  plan['int_wall_len1']*plan['ceiling_height1'], 0.5, 0.51, 0.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
@@ -56,9 +56,9 @@ def parse_floorplan(plan):
         ('Ceiling', 'structure', 'sqft', 0, 'fail_count',  plan['floor_area1'], plan['ceiling_height1'], plan['ceiling_height1'] + 0.01, plan['ceiling_height1'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('Ceiling Insulation', 'structure', 'sqft', 0, 'fail_count',  (plan['floor_area1'] if plan['num_floors'] == 1 else 0), plan['ceiling_height1'], plan['ceiling_height1'] + 0.01, plan['ceiling_height1'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
 
-        ('Roof Cover Underlayment', 'structure', 'sqft', 0, 'fail_count',  plan['roof_area'], plan['roof_height'], plan['roof_height']+.01, plan['roof_height'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
+        # ('Roof Cover Underlayment', 'structure', 'sqft', 0, 'fail_count',  plan['roof_area'], plan['roof_height'], plan['roof_height']+.01, plan['roof_height'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
 
-        ('Roof Cover', 'structure', 'sqft', 0, 'fail_count',  plan['roof_area'], plan['roof_height'], plan['roof_height']+.01, plan['roof_height'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
+        # ('Roof Cover', 'structure', 'sqft', 0, 'fail_count',  plan['roof_area'], plan['roof_height'], plan['roof_height']+.01, plan['roof_height'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
 
         ('Roof Cover and underlayment combined', 'structure', 'sqft', 0, 'fail_count',  plan['roof_area'], plan['roof_height'], plan['roof_height']+.01, plan['roof_height'], 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
 
@@ -115,7 +115,7 @@ def parse_floorplan(plan):
         ('2nd Floor Finished Floor Underlayment', 'structure', 'sqft', 0, 'fail_count',  plan['floor_area2'], plan['ceiling_height1'] + 1, plan['ceiling_height1'] + 1.01, plan['ceiling_height1'] + 1 , 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Finished Floor', 'structure', 'sqft', 0, 'fail_count',  plan['floor_area2'], plan['ceiling_height1'] + 1, plan['ceiling_height1'] + 1.01, plan['ceiling_height1'] + 1 , 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Bathroom Bottom Cabinets', 'structure', 'ea', 0, 'fail_count',  plan['n_bath2'], plan['ceiling_height1'] + 1, plan['ceiling_height1'] + 2, plan['ceiling_height1'] + 1, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
-        ('2nd Floor Bathroom Top Cabinets', 'structure', 'ea', 0, 'fail_count',  plan['n_bath2'], plan['ceiling_height1'] + 1+4.5, plan['ceiling_height1'] + 1 + 5.5, plan['ceiling_height1'] + 1 + 4.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
+        # ('2nd Floor Bathroom Top Cabinets', 'structure', 'ea', 0, 'fail_count',  plan['n_bath2'], plan['ceiling_height1'] + 1+4.5, plan['ceiling_height1'] + 1 + 5.5, plan['ceiling_height1'] + 1 + 4.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Wall Paint - Interior', 'structure', 'sqft', 0, 'fail_count',  plan['int_wall_len2'] * plan['ceiling_height2'], plan['ceiling_height1'] + 1.5, plan['ceiling_height1'] + 1.51, plan['ceiling_height1'] + 1.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Exterior Doors', 'structure', 'ea', 0, 'fail_count',  plan['n_ext_door2'], plan['ceiling_height1'] + 1 + 1, plan['ceiling_height1'] + 1 + 4, plan['ceiling_height1'] + 1 + 2, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
         ('2nd Floor Interior Doors', 'structure', 'ea', 0, 'fail_count',  plan['n_int_door2'] , plan['ceiling_height1'] + 1, plan['ceiling_height1'] + 1 + 2, plan['ceiling_height1'] + 1 + 0.5, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0),
@@ -124,17 +124,27 @@ def parse_floorplan(plan):
         ('2nd Floor Baseboard', 'structure', 'ft', 0, 'fail_count',  plan['int_wall_len2'], plan['ceiling_height1'] + 1, plan['ceiling_height1'] + 1 + .01, plan['ceiling_height1'] + 1, 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 0, 0, 0, 0)
     ]
     df = pd.DataFrame(components, columns = columns)
-    df['damage_quantity'] = 0
+    df['damage_quantity'] = 0.0
     df['plan_id'] = plan['plan_id']
     df['sqft'] = plan['sqft']
     df['num_floors'] = plan['num_floors']
     df['nbed'] = plan['n_bed1'] + plan['n_bed2']
     df['nbath'] = plan['n_bath1'] + plan['n_bath2']
+    df['ncar'] = plan['Amount_cars']
     df['rs_means_cost'] = plan['rs_means_cost']
 
     df['component_join'] = df['component'].str.replace("2nd Floor ", "")
     # df[['roof_length', 'roof_pitch', 'roof_height', 'ridge_height', 'roof_area']] = plan[['roof_length', 'roof_pitch', 'roof_height', 'ridge_height', 'roof_area']]
 
-    for col in ['component_type', 'unit', 'failure_calculation', 'slab', 'pier', 'crawl', 'basement', 'mobile']:
+    for col in ['component_type', 'unit', 'failure_calculation']:
         df[col] = df[col].astype('category')
+
+    # drop unneeded and deprecated columns
+    df = df.drop(
+        [
+            'unit_cost', 'slab', 'pier', 'crawl', 'basement',
+            'mobile','naics_code', 'ecoinvent_id', 'ecoinvent_co2e', 'useeio_co2e'
+        ],
+        axis=1
+    )
     return(df)
