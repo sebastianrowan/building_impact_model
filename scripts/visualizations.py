@@ -5,7 +5,7 @@ import seaborn as sns
 import os
 
 def main():
-    res_path = "../results/mcs_res1-all_10iter_specific.parquet"
+    res_path = "../results/mcs_res1-all_500iter_specific.parquet"
     results = pd.read_parquet(res_path)
     results['pct_dmg'] = results['sum_damage']/results['rs_means_cost']
     

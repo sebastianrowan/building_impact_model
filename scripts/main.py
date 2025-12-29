@@ -14,10 +14,10 @@ import sys
 # What flood depths should be included in the analysis?
 MIN_DEPTH = -1
 MAX_DEPTH = 16 #16
-STEP = 1
+STEP = .1
 
 # How many simulations should be generated at each flood depth?
-N = 10 #500
+N = 500 #500
 
 # Where should the results be saved?
 RESULT_FILENAME = f"../results/mcs_res1-all_{N}iter_specific.parquet"
@@ -50,7 +50,7 @@ def main():
     )
 
     plan0 = plans.copy(deep=True).iloc[0]
-    plans = plans.iloc[1:10]
+    plans = plans.iloc[1:]
 
     print("Iterate through floorplans and run MCS...")
     start = datetime.datetime.now()
@@ -62,7 +62,7 @@ def main():
         i = f"{index}"
         i =int(i)+1 # the only purpose of this is for printing the statement below. Python won't 
         #  allow operators to be applied directly to index, and I don't understand why.
-        print(f"Running simulations for floor plan {i} of {N}")
+        print(f"Running simulations for floor plan {i} of {plans.shape[0]}")
         parsed_plan = parse.parse_floorplan(plan.copy(deep=True))
         results = pd.concat([
             results,
