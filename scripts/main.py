@@ -175,6 +175,8 @@ def floorplan_mcs(plan, cost, co2):
 
 def floorplan_mcs_specific(plan, lca_data):
     plan = plan[(plan['component_type'] == "structure")]
+
+    # *** This block should be wrapped in separate function (calculations.generate_simulations_specific())
     floods = np.arange(MIN_DEPTH,MAX_DEPTH,STEP)
 
     rep = len(pd.unique(lca_data.component))
@@ -188,16 +190,8 @@ def floorplan_mcs_specific(plan, lca_data):
     floods = np.tile(floods,components.shape[0])
 
     components_flooded['flood_depth'] = floods
-
-    # lca_data_floods = lca_data_sims.groupby(['component','run']).sample(floods.shape[0],replace=True, random_state=RNG)
-    # floods = np.tile(floods,lca_data_sims.shape[0])
-    # lca_data_floods['flood_depth'] = floods
-
-    # plan = plan[(plan['component_type'] == "structure")].groupby('component').sample(N, replace=True, random_state=RNG)
-
-    # floods = calculations.generate_floods(MIN_DEPTH, MAX_DEPTH, STEP, 1)
-    # simulations = floods.merge(components, how = 'left', on='run')
-
+    # ***
+    
     result = calculations.flood_structure(components_flooded)
 
 
