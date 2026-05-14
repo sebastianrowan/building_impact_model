@@ -7,6 +7,8 @@ import utils
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import datetime
 import os
 import sys
@@ -17,10 +19,17 @@ MAX_DEPTH = 16 #16
 STEP = .1
 
 # How many simulations should be generated at each flood depth?
-N = 500 #500
+N = 100 #500
+
+# Should specific material choices be made for each component for each simulation? (If False, unit cost and ghg are sampled from distribution)
+SPECIFIC = True
+
+# Should results be aggregated at the component level? (Set to False to aggregate to building level)
+COMPONENT = False
+
 
 # Where should the results be saved?
-RESULT_FILENAME = f"../results/mcs_res1-all_{N}iter_specific.parquet"
+RESULT_FILENAME = f"../results/mcs_res1-all_{N}iter{"_specific" if SPECIFIC else ""}{"_component-means" if COMPONENT else ""}.parquet"
 
 # RNG Seed for reproducibility 
 SEED = 29705
@@ -37,7 +46,7 @@ def main():
     plans = pd.read_excel(floorplan_data_path, sheet_name="floor_plans")
 
     ### Below, specify which subset of plans to run the analysis on ###
-    plans = plans[(plans['type'] == "Single-Family")]
+    plans = plans[(plans['type'] == "Single-Family")].reset_index()
     # print(plans.shape)
     # print(np.max(plans['ridge_height']))
     # sys.exit() # stop code here to check dataset size
@@ -50,7 +59,7 @@ def main():
     )
 
     plan0 = plans.copy(deep=True).iloc[0]
-    plans = plans.iloc[1:]
+    # plans = plans.iloc[1:]
 
     print("Iterate through floorplans and run MCS...")
     start = datetime.datetime.now()
@@ -60,23 +69,29 @@ def main():
     #         coupled cost and lca data. I have not tested it but if it does fail there are two solutions:
     #           1. remove the components from the cost and lca spreadsheets
     #           2. uncomment the rows for the removed components from the parse function
-    results = floorplan_mcs_specific(parse.parse_floorplan(plan0), lca_data)
-    # results = generate_component_mcs_results_specific(parse.parse_floorplan(plan0), lca_data)
-    
-    for index, plan in plans.iterrows():
-        i = f"{index}"
-        i =int(i)+1 # the only purpose of this is for printing the statement below. Python won't 
-        #  allow operators to be applied directly to index, and I don't understand why.
-        print(f"Running simulations for floor plan {i} of {plans.shape[0]}")
-        parsed_plan = parse.parse_floorplan(plan.copy(deep=True))
-        results = pd.concat([
-            results,
-            floorplan_mcs_specific(parsed_plan, lca_data)
-            # generate_component_mcs_results_specific(parsed_plan, lca_data)
-        ])
-    print("saving results")
 
-    results.to_parquet(RESULT_FILENAME) 
+    # TODO: consider adding logic that ensures the correct function is being used based on config var selection
+    result = generate_component_mcs_results_specific(parse.parse_floorplan(plan0), lca_data)
+    schema = pa.Schema.from_pandas(result)
+    print(schema)
+    i = 1
+    with pq.ParquetWriter(RESULT_FILENAME, schema) as writer:
+        for index, plan in plans.iterrows():
+            print(f"Running simulations for floor plan {plan["plan_id"]} ({i} of {plans.shape[0]})")
+            parsed_plan = parse.parse_floorplan(plan.copy(deep=True))
+            # results = pd.concat([
+            #     results,
+            #     generate_component_mcs_results_specific(parsed_plan, lca_data)
+            #     # generate_component_mcs_results_specific(parsed_plan, lca_data)
+            # ])
+            result = generate_component_mcs_results_specific(parsed_plan, lca_data)
+            batch = pa.RecordBatch.from_pandas(result, schema=schema)
+            writer.write_batch(batch)
+            i += 1
+
+    # print("saving results")
+
+    # results.to_parquet(RESULT_FILENAME) 
     end = datetime.datetime.now()
     print(f"Time elapsed: {end - start}")
 
@@ -111,20 +126,36 @@ def generate_component_mcs_results(plan, cost, co2):
     return(result)
 
 def generate_component_mcs_results_specific(plan, lca_data):
+    plan = plan[(plan['component_type'] == "structure")]
 
+    # *** This block should be wrapped in separate function (calculations.generate_simulations_specific())
+    floods = np.arange(MIN_DEPTH,MAX_DEPTH,STEP)
+
+    rep = len(pd.unique(lca_data.component))
     lca_data_sims = lca_data.groupby('component').sample(N, replace=True, random_state=RNG)
-    lca_data_sims['run'] = np.tile(np.arange(N),plan.shape[0])
 
-    components = plan.merge(lca_data_sims, how = 'outer', left_on = 'component_join', right_on = 'component')
-    components = components[(components['component_type'] == "structure")]
+    lca_data_sims['run'] = np.tile(np.arange(N),rep)
+    components = plan.merge(lca_data_sims, how = 'left', left_on = 'component_join', right_on = 'component')
+   
+    
+    components_flooded = components.groupby(['component_x','run']).sample(floods.shape[0],replace=True, random_state=RNG)
+    floods = np.tile(floods,components.shape[0])
 
-    floods = calculations.generate_floods(MIN_DEPTH, MAX_DEPTH, STEP, N)
-    simulations = floods.merge(components, how = 'outer', on='run')
+    components_flooded['flood_depth'] = floods
+    # ***
 
-    result = calculations.flood_structure(simulations)
+    result = calculations.flood_structure(components_flooded)
 
-    result['damage_cost'] = result['damage_quantity'] * result['unit_cost']
+    result['damage_cost'] = result['damage_quantity'] * result['total_cost']
     result['damage_co2'] = result['damage_quantity'] * result['kg_co2e_fu']
+    # result = result[['component_x', 'plan_id', 'sqft', 'num_floors', 'rs_means_cost', 'component_join', 'component_y','product', 'run', 'flood_depth', 'damage_cost', 'damage_co2']]
+
+    result = result.groupby(['component_x', 'plan_id', 'sqft', 'num_floors', 'rs_means_cost', 'flood_depth'], observed=True).agg(
+        mean_damage = ('damage_cost', 'mean'),
+        mean_co2 = ('damage_co2', 'mean')
+    ).reset_index()
+
+    result = result.convert_dtypes(dtype_backend='pyarrow')
 
     return(result)
 
@@ -194,8 +225,6 @@ def floorplan_mcs_specific(plan, lca_data):
     
     result = calculations.flood_structure(components_flooded)
 
-
-    
     result['damage_cost'] = result['damage_quantity'] * result['total_cost']
     result['damage_co2'] = result['damage_quantity'] * result['kg_co2e_fu']
     
