@@ -32,8 +32,6 @@ Monte Carlo Analysis to simulate flood impacts to buildings.
 
 - utils.py - functions for loading in the cost and LCA data. 
 
-    - future work should include linking cost and lca data by specific material choice
-
 
 ## results
 
